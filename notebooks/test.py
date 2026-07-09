@@ -16,7 +16,19 @@ trout_stats = trout_stats[trout_stats['game_type'].isin(['R', 'F', 'D', 'L', 'W'
 ohtani_stats.to_csv('../data/raw/ohtani_20-23.csv', index=False)
 trout_stats.to_csv('../data/raw/trout_20-23.csv', index=False)
 
-print(ohtani_stats['pitch_type'].value_counts())
-print(ohtani_stats['delta_run_exp'].isnull().sum())
-print(ohtani_stats['zone'].unique())
-print(pd.crosstab(ohtani_stats['pitch_type'], [ohtani_stats['balls'], ohtani_stats['strikes']]))
+ohtani_pitch_types = ohtani_stats['pitch_type'].value_counts()
+ohtani_null_pitches = ohtani_stats['delta_run_exp'].isnull().sum()
+ohtani_zones = ohtani_stats['zone'].unique()
+ohtani_balls_and_strikes = pd.crosstab(ohtani_stats['pitch_type'], [ohtani_stats['balls'], ohtani_stats['strikes']])
+
+print(ohtani_pitch_types)
+print(ohtani_null_pitches)
+print(ohtani_zones)
+print(ohtani_balls_and_strikes)
+
+trout_pitch_types = trout_stats['pitch_type'].value_counts()
+trout_null_pitches = trout_stats['delta_run_exp'].isnull().sum()
+trout_zones = trout_stats['zone'].unique()
+trout_balls_and_strikes = pd.crosstab(trout_stats['pitch_type'], [trout_stats['balls'], trout_stats['strikes']])
+
+
