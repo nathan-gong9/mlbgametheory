@@ -29,7 +29,14 @@ batter_balls_and_strikes = pd.crosstab(batter_stats['pitch_type'], [batter_stats
 batter_stats = add_pitch_result_columns(batter_stats)
 pitcher_stats = add_pitch_result_columns(pitcher_stats)
 
-print(batter_stats[['description', 'swing', 'take', 'whiff']].drop_duplicates(subset='description'))
+batter_pitches = pd.crosstab(batter_stats['pitch_type'], batter_stats["zone"])
+print(batter_pitches)
+
+batter_swing_percentage = batter_stats.groupby(['pitch_type', 'zone'])['swing'].mean()
+print(batter_swing_percentage.head())
+
+pitcher_swing_percentage = pitcher_stats.groupby(['pitch_type', 'zone'])['swing'].mean()
+print(pitcher_swing_percentage.head())
 
 
 
