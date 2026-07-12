@@ -16,3 +16,18 @@ def add_pitch_result_columns(df):
     pitch_results["whiff"] = pitch_results['description'].isin(whiffs)
 
     return pitch_results
+
+def apply_shrinkage(observed_rate, baseline_rate, pitch_count, shrink_size):
+    """
+    Shrinks a small-sample observed rate toward a prior (baseline) rate,
+    weighted by how much data supports the observed rate.
+
+    Uses a weighted average between the observed rate and the prior:
+        shrunk = (n * observed_rate + k * prior_rate) / (n + k)
+
+    As n grows large relative to k, the result approaches observed_rate
+    (we trust the data). As n shrinks toward zero, the result approaches
+    prior_rate (we fall back on the baseline).
+
+    """
+    return (pitch_count * observed_rate + shrink_size * baseline_rate) / (pitch_count + shrink_size)
