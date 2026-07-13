@@ -1,3 +1,7 @@
+'''
+Queries full Statcast raw data from current day to 2020
+'''
+
 import pybaseball
 import pandas as pd
 import sys

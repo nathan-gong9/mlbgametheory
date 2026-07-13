@@ -6,6 +6,7 @@ def add_pitch_result_columns(df):
     """
 
     pitch_results = df[df["description"] != "automatic_ball"].copy()
+    pitch_results = pitch_results[pitch_results['pitch_type'] != 'UN']
 
     swings = ['swinging_strike', 'hit_into_play', 'foul', 'foul_tip', 'swinging_strike_blocked']
     takes = ['called_strike', 'ball', 'blocked_ball', 'hit_by_pitch']
@@ -31,3 +32,21 @@ def apply_shrinkage(observed_rate, baseline_rate, pitch_count, shrink_size):
 
     """
     return (pitch_count * observed_rate + shrink_size * baseline_rate) / (pitch_count + shrink_size)
+
+def find_shrink_rate(data, category):
+    """
+    Finds the shrink rate to push small sample size pitch type + zone 
+    buckets toward the league average
+    """
+    averages = data.groupby(['pitch_type', 'zone'])[category].agg(['mean', 'count'])
+    averages = averages[averages['count'] > 5]
+    mean = (averages['mean'] * averages['count']).sum() / averages['count'].sum()
+    variance = averages['mean'].var()
+    noise = (mean * (1 - mean) / averages['count']).mean()
+    true_variance = variance - noise
+
+    if true_variance <= 0:
+        return 10
+    shrink_rate = mean * (1 - mean) / true_variance - 1
+
+    return shrink_rate
