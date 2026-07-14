@@ -52,7 +52,7 @@ batter_swing_percentage['baseline'] = league_swing_baseline
 shrink_rates = pd.read_csv('../data/processed/shrink_rates.csv', index_col=0)
 print(shrink_rates)
 
-swing_shrink_rate = shrink_rates.loc["swing"]
+swing_shrink_rate = shrink_rates.loc["swing"].iloc[0]
 print(swing_shrink_rate)
 
 batter_swing_percentage['adjusted'] = apply_shrinkage(batter_swing_percentage['mean'],
