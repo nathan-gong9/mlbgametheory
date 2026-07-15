@@ -11,10 +11,12 @@ def add_pitch_result_columns(df):
     swings = ['swinging_strike', 'hit_into_play', 'foul', 'foul_tip', 'swinging_strike_blocked']
     takes = ['called_strike', 'ball', 'blocked_ball', 'hit_by_pitch']
     whiffs = ['swinging_strike', 'swinging_strike_blocked']
+    in_play = ['hit_into_play']
 
     pitch_results["swing"] = pitch_results['description'].isin(swings)
     pitch_results["take"] = pitch_results['description'].isin(takes)
     pitch_results["whiff"] = pitch_results['description'].isin(whiffs)
+    pitch_results["in_play"] = pitch_results['description'].isin(in_play)
 
     return pitch_results
 
@@ -35,7 +37,7 @@ def apply_shrinkage(observed_rate, baseline_rate, pitch_count, shrink_size):
 
 def find_shrink_rate(data, category):
     """
-    Finds the shrink rate to push small sample size pitch type + zone 
+    Finds the shrink rate of a discrete variable to push small sample size pitch type + zone 
     buckets toward the league average
     """
     averages = data.groupby(['pitch_type', 'zone'])[category].agg(['mean', 'count'])
@@ -48,5 +50,23 @@ def find_shrink_rate(data, category):
     if true_variance <= 0:
         return 10
     shrink_rate = mean * (1 - mean) / true_variance - 1
+
+    return shrink_rate
+
+def find_shrink_rate_continuous(data, category):
+    """
+    Finds the shrink rate of a continuous variable to push small sample size pitch type + zone 
+    buckets toward the league average
+    """
+    averages = data.groupby(['pitch_type', 'zone'])[category].agg(['mean', 'count', 'var'])
+    averages = averages[averages['count'] > 5]
+    mean = (averages['mean'] * averages['count']).sum() / averages['count'].sum()
+    variance = averages['mean'].var()
+    noise = (averages['var'] / averages['count']).mean()
+    true_variance = variance - noise
+
+    if true_variance <= 0:
+        return 10
+    shrink_rate = averages['var'].mean() / true_variance - 1
 
     return shrink_rate
