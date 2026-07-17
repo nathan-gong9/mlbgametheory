@@ -1,4 +1,4 @@
-def add_pitch_result_columns(df):
+def format_pitch_results(df):
     """
     Adds pitch result columns to a raw Statcast dataframe,
     based on the 'description' field. Also filters out automatic_ball rows,
@@ -7,6 +7,7 @@ def add_pitch_result_columns(df):
 
     pitch_results = df[df["description"] != "automatic_ball"].copy()
     pitch_results = pitch_results[pitch_results['pitch_type'] != 'UN']
+    pitch_results = pitch_results[pitch_results['game_type'].isin(['R', 'F', 'D', 'L', 'W'])]
 
     swings = ['swinging_strike', 'hit_into_play', 'foul', 'foul_tip', 'swinging_strike_blocked']
     takes = ['called_strike', 'ball', 'blocked_ball', 'hit_by_pitch']
@@ -18,6 +19,10 @@ def add_pitch_result_columns(df):
     pitch_results["whiff"] = pitch_results['description'].isin(whiffs)
     pitch_results["in_play"] = pitch_results['description'].isin(in_play)
 
+    pitch_results = pitch_results.sort_values(by=['game_pk', 'at_bat_number', 'pitch_number'])
+    pitch_results["prior_pitch_type"] = pitch_results.groupby(['game_pk', 'at_bat_number'])['pitch_type'].shift(1)
+    pitch_results["prior_zone"] = pitch_results.groupby(['game_pk', 'at_bat_number'])['zone'].shift(1)
+    
     return pitch_results
 
 def apply_shrinkage(observed_rate, baseline_rate, pitch_count, shrink_size):

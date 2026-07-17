@@ -8,7 +8,7 @@ import pandas as pd
 import sys
 
 sys.path.append('../src')
-from feature_engineering import add_pitch_result_columns
+from feature_engineering import format_pitch_results
 from feature_engineering import find_shrink_rate
 from feature_engineering import find_shrink_rate_continuous
 
@@ -18,24 +18,24 @@ filenames = ['../data/raw/2020season.csv', '../data/raw/2021season.csv',
             '../data/raw/2026season.csv',]
 
 league_data = pd.concat([pd.read_csv(f) for f in filenames])
-league_data = add_pitch_result_columns(league_data)
+league_data = format_pitch_results(league_data)
 
 league_data_swings = league_data[league_data['swing'] == True]
 league_data_contact = league_data[league_data['in_play'] == True]
-league_data_contact = league_data_contact.dropna(subset=['launch_speed'])
+league_data_contact = league_data_contact.dropna(subset=['estimated_woba_using_speedangle'])
 
 league_data_swing_zones = league_data.groupby(['pitch_type', 'zone'])['swing'].mean()
 league_data_whiff_zones = league_data_swings.groupby(['pitch_type', 'zone'])['whiff'].mean()
-league_data_exit_velo_zones = league_data_contact.groupby(['pitch_type', 'zone'])['launch_speed'].mean()
+league_data_xwoba_zones = league_data_contact.groupby(['pitch_type', 'zone'])['estimated_woba_using_speedangle'].mean()
 
 league_data.to_csv('../data/processed/processed_league_data.csv')
 league_data_swing_zones.to_csv('../data/processed/league_swing_baseline.csv')
 league_data_whiff_zones.to_csv('../data/processed/league_whiff_baseline.csv')
-league_data_exit_velo_zones.to_csv('../data/processed/league_exit_velo_baseline.csv')
+league_data_xwoba_zones.to_csv('../data/processed/league_xwoba_baseline.csv')
 
 shrink_rates = {
     'swing': find_shrink_rate(league_data, 'swing'),
     'whiff': find_shrink_rate(league_data_swings, 'whiff'),
-    'exit_velocity': find_shrink_rate_continuous(league_data_contact, 'launch_speed'),
+    'xwoba': find_shrink_rate_continuous(league_data_contact, 'estimated_woba_using_speedangle'),
 }
 pd.Series(shrink_rates).to_csv('../data/processed/shrink_rates.csv')
