@@ -47,8 +47,6 @@ else:
     pitcher_stats.to_csv(f'../data/raw/{pitcher_last_name}_{MATCHUP_YEAR}.csv', index=False)
     batter_stats.to_csv(f'../data/raw/{batter_last_name}_{MATCHUP_YEAR}.csv', index=False)
 
-print(batter_stats.dtypes[['zone', 'pitch_type', 'prior_pitch_type', 'prior_zone']])
-
 #pitcher_pitch_types = pitcher_stats['pitch_type'].unique()
 #filtered_batter_stats = batter_stats[batter_stats['pitch_type'].isin(pitcher_pitch_types)]
 #batter_pitches = pd.crosstab(filtered_batter_stats['pitch_type'], filtered_batter_stats["zone"])
