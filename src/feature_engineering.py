@@ -22,6 +22,8 @@ def format_pitch_results(df):
     pitch_results = pitch_results.sort_values(by=['game_pk', 'at_bat_number', 'pitch_number'])
     pitch_results["prior_pitch_type"] = pitch_results.groupby(['game_pk', 'at_bat_number'])['pitch_type'].shift(1)
     pitch_results["prior_zone"] = pitch_results.groupby(['game_pk', 'at_bat_number'])['zone'].shift(1)
+
+    pitch_results = pitch_results.dropna(subset=["zone"])
     
     return pitch_results
 
