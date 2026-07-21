@@ -102,6 +102,3 @@ xwoba_adjusted = batter_contact_quality['adjusted'].rename('xwoba_adjusted')
 batter_stats = batter_stats.join(swing_adjusted, on=['pitch_type', 'zone'])
 batter_stats = batter_stats.join(whiff_adjusted, on=['pitch_type', 'zone'])
 batter_stats = batter_stats.join(xwoba_adjusted, on=['pitch_type', 'zone'])
-
-print(batter_stats['swing_rate_adjusted'].isna().sum())
-print(batter_stats[batter_stats['zone'].isna()]['description'].value_counts())
