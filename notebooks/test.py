@@ -4,9 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.append('../src')
-from feature_engineering import format_pitch_results
-from feature_engineering import find_shrink_rate
-from feature_engineering import apply_shrinkage
+from feature_engineering import format_pitch_results, find_shrink_rate, apply_shrinkage, shrink_features
 
 #Determines the range of relevant data and the two specific players
 MATCHUP_YEAR = 2023
@@ -52,51 +50,13 @@ else:
 #batter_pitches = pd.crosstab(filtered_batter_stats['pitch_type'], filtered_batter_stats["zone"])
 
 #Sends the batter dataframe to smaller dataframes of swings and events in play
-batter_stats_swings = batter_stats[batter_stats['swing'] == True]
-batter_stats_contact = batter_stats[batter_stats['in_play'] == True]
-batter_stats_contact = batter_stats_contact.dropna(subset=['estimated_woba_using_speedangle'])
+batter_swing_adjusted, batter_whiff_adjusted, batter_xwoba_adjusted = shrink_features(batter_stats)
+batter_stats = batter_stats.join(batter_swing_adjusted, on=['pitch_type', 'zone'])
+batter_stats = batter_stats.join(batter_whiff_adjusted, on=['pitch_type', 'zone'])
+batter_stats = batter_stats.join(batter_xwoba_adjusted, on=['pitch_type', 'zone'])
 
-#Calculates the batter and pitcher swing, whiff, and xwoba values based on pitch type X zone
-batter_swing_percentage = batter_stats.groupby(['pitch_type', 'zone'])['swing'].agg(['mean', 'count'])
-pitcher_swing_percentage = pitcher_stats.groupby(['pitch_type', 'zone'])['swing'].mean()
-batter_whiff_percentage = batter_stats_swings.groupby(['pitch_type', 'zone'])['whiff'].agg(['mean', 'count'])
-batter_whiff_percentage = batter_whiff_percentage.reindex(batter_swing_percentage.index, fill_value=0)
-batter_contact_quality = batter_stats_contact.groupby(['pitch_type', 'zone'])['estimated_woba_using_speedangle'].agg(['mean', 'count'])
-batter_contact_quality = batter_contact_quality.reindex(batter_swing_percentage.index, fill_value=0)
+pitcher_swing_adjusted, pitcher_whiff_adjusted, pitcher_xwoba_adjusted = shrink_features(pitcher_stats)
+pitcher_stats = pitcher_stats.join(pitcher_swing_adjusted, on=['pitch_type', 'zone'])
+pitcher_stats = pitcher_stats.join(pitcher_whiff_adjusted, on=['pitch_type', 'zone'])
+pitcher_stats = pitcher_stats.join(pitcher_xwoba_adjusted, on=['pitch_type', 'zone'])
 
-#Fetches baseline values for swing, whiff, and xwoba rates in specific zone X pitch type buckets
-league_swing_baseline = pd.read_csv('../data/processed/league_swing_baseline.csv', index_col=['pitch_type', 'zone'])
-league_whiff_baseline = pd.read_csv('../data/processed/league_whiff_baseline.csv', index_col=['pitch_type', 'zone'])
-league_xwoba_baseline = pd.read_csv('../data/processed/league_xwoba_baseline.csv', index_col=['pitch_type', 'zone'])
-batter_swing_percentage['baseline'] = league_swing_baseline
-batter_whiff_percentage['baseline'] = league_whiff_baseline
-batter_contact_quality['baseline'] = league_xwoba_baseline
-
-#Apply shrinkage rates for smaller sample sizes, pushing values towards league average
-shrink_rates = pd.read_csv('../data/processed/shrink_rates.csv', index_col=0)
-
-swing_shrink_rate = shrink_rates.loc["swing"].iloc[0]
-whiff_shrink_rate = shrink_rates.loc["whiff"].iloc[0]
-xwoba_shrink_rate = shrink_rates.loc["xwoba"].iloc[0]
-
-batter_swing_percentage['adjusted'] = apply_shrinkage(batter_swing_percentage['mean'],
-    batter_swing_percentage['baseline'],
-    batter_swing_percentage['count'],
-    swing_shrink_rate)
-
-batter_whiff_percentage['adjusted'] = apply_shrinkage(batter_whiff_percentage['mean'],
-    batter_whiff_percentage['baseline'],
-    batter_whiff_percentage['count'],
-    whiff_shrink_rate)
-
-batter_contact_quality['adjusted'] = apply_shrinkage(batter_contact_quality['mean'],
-    batter_contact_quality['baseline'],
-    batter_contact_quality['count'],
-    xwoba_shrink_rate)
-
-swing_adjusted = batter_swing_percentage['adjusted'].rename('swing_rate_adjusted')
-whiff_adjusted = batter_whiff_percentage['adjusted'].rename('whiff_rate_adjusted')
-xwoba_adjusted = batter_contact_quality['adjusted'].rename('xwoba_adjusted')
-batter_stats = batter_stats.join(swing_adjusted, on=['pitch_type', 'zone'])
-batter_stats = batter_stats.join(whiff_adjusted, on=['pitch_type', 'zone'])
-batter_stats = batter_stats.join(xwoba_adjusted, on=['pitch_type', 'zone'])
