@@ -8,17 +8,19 @@ import pandas as pd
 import sys
 
 sys.path.append('../src')
-from feature_engineering import format_pitch_results
-from feature_engineering import find_shrink_rate
-from feature_engineering import find_shrink_rate_continuous
+from feature_engineering import format_pitch_results, find_shrink_rate, find_shrink_rate_continuous, generate_run_value_table
 
 filenames = ['../data/raw/2020season.csv', '../data/raw/2021season.csv', 
             '../data/raw/2022season.csv', '../data/raw/2023season.csv', 
             '../data/raw/2024season.csv', '../data/raw/2025season.csv', 
             '../data/raw/2026season.csv',]
 
-league_data = pd.concat([pd.read_csv(f) for f in filenames])
+league_data = pd.concat([pd.read_csv(f) for f in filenames], ignore_index=True)
 league_data = format_pitch_results(league_data)
+
+count_run_values = generate_run_value_table(league_data)
+count_run_values.to_csv('../data/processed/count_run_values.csv', index=False)
+print(count_run_values)
 
 league_data_swings = league_data[league_data['swing'] == True]
 league_data_contact = league_data[league_data['in_play'] == True]

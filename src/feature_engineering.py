@@ -1,4 +1,18 @@
 import pandas as pd
+import numpy as np
+
+
+OUTCOME_MAP = {
+        'ball': 'ball',
+        'blocked_ball': 'ball',
+        'hit_by_pitch': 'ball',
+        'called_strike': 'called_strike',
+        'swinging_strike': 'swinging_strike',
+        'swinging_strike_blocked': 'swinging_strike',
+        'foul_tip': 'swinging_strike',
+        'foul': 'foul',
+        'hit_into_play': 'in_play',
+    }
 
 def format_pitch_results(df):
     """
@@ -128,3 +142,72 @@ def shrink_features(df):
     xwoba_adjusted = df_contact_quality['adjusted'].rename('xwoba_adjusted')
 
     return swing_adjusted, whiff_adjusted, xwoba_adjusted
+
+def generate_run_value_table(df, woba_scale=1.0):
+    """
+    Builds the count-only run expectancy table from league-wide pitch data.
+    Returns ['balls', 'strikes', 'run_value'].
+    """
+    df = df.copy()
+    pa_ending = df['events'].notna() & (df['woba_denom'] == 1)
+
+    blend = df['woba_value'].where(~df['in_play'],
+                                   df['estimated_woba_using_speedangle'])
+    df['woba_blend'] = blend.fillna(df['woba_value']).where(pa_ending)
+    lgwoba = df.groupby('game_year')['woba_blend'].transform('mean')
+    df['pa_run_value'] = (df['woba_blend'] - lgwoba) / woba_scale
+    df['pa_run_value'] = df.groupby(['game_pk', 'at_bat_number'])['pa_run_value'].transform('max')
+    deduped = df.drop_duplicates(subset=['game_pk', 'at_bat_number', 'balls', 'strikes'])
+    return (deduped.groupby(['balls', 'strikes'])['pa_run_value']
+                   .mean()
+                   .rename('run_value')
+                   .reset_index())
+
+def measure_location_error(df, split_by_count=True, min_n=30):
+    """
+    Measures how spread out a pitcher's actual pitch locations are,
+    per pitch type. Feeds the execution-error work in Phase 7.
+
+    Returns one row per slice with the standard deviation of horizontal
+    (plate_x) and vertical (plate_z) location, in feet.
+    """
+    df = df.copy().dropna(subset=['plate_x', 'plate_z'])
+
+    group_cols = ['pitch_type', 'stand']
+
+    if split_by_count:
+        # Pitcher is ahead when strikes > balls; behind when balls > strikes.
+        # Separating these strips out some deliberate aiming differences.
+        df['count_state'] = np.select(
+            [df['strikes'] > df['balls'], df['balls'] > df['strikes']],
+            ['ahead', 'behind'],
+            default='even'
+        )
+        group_cols.append('count_state')
+
+    out = df.groupby(group_cols).agg(
+        n=('plate_x', 'size'),
+        mean_x=('plate_x', 'mean'),
+        mean_z=('plate_z', 'mean'),
+        sd_x=('plate_x', 'std'),
+        sd_z=('plate_z', 'std'),
+    ).reset_index()
+
+    out = out[out['n'] >= min_n]
+
+    # Strike zone is ~1.42 ft wide. Anything near 1.0 here is too inflated to use.
+    out['sd_x_share_of_zone'] = (out['sd_x'] / 1.42).round(2)
+
+    return out.sort_values(['pitch_type', 'n'], ascending=[True, False])
+
+def build_outcome_label(df):
+    '''
+    Builds the outcome label for different pitch result events
+    '''
+    df = df.copy()
+    df['outcome'] = df['description'].map(OUTCOME_MAP)
+    unmapped = df.loc[df['outcome'].isna(), 'description'].value_counts()
+    if not unmapped.empty:
+        print(f"Dropping {unmapped.sum()} unmapped pitches:\n{unmapped}")
+    df = df.dropna(subset=['outcome'])
+    return df

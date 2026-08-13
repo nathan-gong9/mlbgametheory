@@ -4,19 +4,18 @@ import sys
 from pathlib import Path
 
 sys.path.append('../src')
-from feature_engineering import format_pitch_results, find_shrink_rate, apply_shrinkage, shrink_features
+from feature_engineering import format_pitch_results, find_shrink_rate, apply_shrinkage, shrink_features, measure_location_error, build_outcome_label
 
 #Determines the range of relevant data and the two specific players
 MATCHUP_YEAR = 2023
 PITCHER = "Shohei Ohtani"
 BATTER = "Mike Trout"
 
-
 pitcher_first_name, pitcher_last_name = PITCHER.lower().split(" ")
 batter_first_name, batter_last_name = BATTER.lower().split(" ")
 
-batter_path = Path(f'../data/raw/{batter_last_name}_{MATCHUP_YEAR}.csv')
-pitcher_path = Path(f'../data/raw/{pitcher_last_name}_{MATCHUP_YEAR}.csv')
+batter_path = Path(f'../data/raw/{batter_last_name}_{MATCHUP_YEAR}_batting.csv')
+pitcher_path = Path(f'../data/raw/{pitcher_last_name}_{MATCHUP_YEAR}_pitching.csv')
 
 if batter_path.is_file() and pitcher_path.is_file():
     batter_stats = pd.read_csv(batter_path)
@@ -37,17 +36,25 @@ else:
     batter_stats = pybaseball.statcast_batter(start_date, end_date, batter_id)
     batter_stats = format_pitch_results(batter_stats)
     pitcher_stats = format_pitch_results(pitcher_stats)
-    pitcher_stats = pitcher_stats.head(5500)
-    batter_stats = batter_stats.head(5500)
+    pitcher_stats = pitcher_stats.tail(5500)
+    batter_stats = batter_stats.tail(5500)
 
     #Sends the player data to unique csv's
 
-    pitcher_stats.to_csv(f'../data/raw/{pitcher_last_name}_{MATCHUP_YEAR}.csv', index=False)
-    batter_stats.to_csv(f'../data/raw/{batter_last_name}_{MATCHUP_YEAR}.csv', index=False)
+    pitcher_stats.to_csv(pitcher_path, index=False)
+    batter_stats.to_csv(batter_path, index=False)
 
 #pitcher_pitch_types = pitcher_stats['pitch_type'].unique()
 #filtered_batter_stats = batter_stats[batter_stats['pitch_type'].isin(pitcher_pitch_types)]
 #batter_pitches = pd.crosstab(filtered_batter_stats['pitch_type'], filtered_batter_stats["zone"])
+
+pitcher_stats = build_outcome_label(pitcher_stats)
+batter_stats = build_outcome_label(batter_stats)
+print(pitcher_stats['outcome'].value_counts())
+print(batter_stats['outcome'].value_counts())
+
+location_error = measure_location_error(pitcher_stats)
+location_error.to_csv('../data/processed/ohtani_location_error.csv', index=False)
 
 #Sends the batter dataframe to smaller dataframes of swings and events in play
 batter_swing_adjusted, batter_whiff_adjusted, batter_xwoba_adjusted = shrink_features(batter_stats)
@@ -59,4 +66,3 @@ pitcher_swing_adjusted, pitcher_whiff_adjusted, pitcher_xwoba_adjusted = shrink_
 pitcher_stats = pitcher_stats.join(pitcher_swing_adjusted, on=['pitch_type', 'zone'])
 pitcher_stats = pitcher_stats.join(pitcher_whiff_adjusted, on=['pitch_type', 'zone'])
 pitcher_stats = pitcher_stats.join(pitcher_xwoba_adjusted, on=['pitch_type', 'zone'])
-
