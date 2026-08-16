@@ -4,7 +4,12 @@ import sys
 from pathlib import Path
 
 sys.path.append('../src')
-from feature_engineering import format_pitch_results, find_shrink_rate, apply_shrinkage, shrink_features, measure_location_error, build_outcome_label
+from feature_engineering import (format_pitch_results, find_shrink_rate, apply_shrinkage, 
+                                shrink_features, measure_location_error, build_outcome_label, 
+                                split_data, get_xy, fit_logistic, measure_benchmark)
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import log_loss
 
 #Determines the range of relevant data and the two specific players
 MATCHUP_YEAR = 2023
@@ -50,19 +55,39 @@ else:
 
 pitcher_stats = build_outcome_label(pitcher_stats)
 batter_stats = build_outcome_label(batter_stats)
-print(pitcher_stats['outcome'].value_counts())
-print(batter_stats['outcome'].value_counts())
 
 location_error = measure_location_error(pitcher_stats)
 location_error.to_csv('../data/processed/ohtani_location_error.csv', index=False)
 
-#Sends the batter dataframe to smaller dataframes of swings and events in play
-batter_swing_adjusted, batter_whiff_adjusted, batter_xwoba_adjusted = shrink_features(batter_stats)
-batter_stats = batter_stats.join(batter_swing_adjusted, on=['pitch_type', 'zone'])
-batter_stats = batter_stats.join(batter_whiff_adjusted, on=['pitch_type', 'zone'])
-batter_stats = batter_stats.join(batter_xwoba_adjusted, on=['pitch_type', 'zone'])
+pitcher_train, pitcher_test = split_data(pitcher_stats)
+batter_train, batter_test = split_data(batter_stats)
 
-pitcher_swing_adjusted, pitcher_whiff_adjusted, pitcher_xwoba_adjusted = shrink_features(pitcher_stats)
-pitcher_stats = pitcher_stats.join(pitcher_swing_adjusted, on=['pitch_type', 'zone'])
-pitcher_stats = pitcher_stats.join(pitcher_whiff_adjusted, on=['pitch_type', 'zone'])
-pitcher_stats = pitcher_stats.join(pitcher_xwoba_adjusted, on=['pitch_type', 'zone'])
+#Sends the batter dataframe to smaller dataframes of swings and events in play
+batter_swing_adjusted, batter_whiff_adjusted, batter_xwoba_adjusted = shrink_features(batter_train)
+pitcher_swing_adjusted, pitcher_whiff_adjusted, pitcher_xwoba_adjusted = shrink_features(pitcher_train)
+
+batter_train = batter_train.join(batter_swing_adjusted, on=['pitch_type', 'zone'])
+batter_train = batter_train.join(batter_whiff_adjusted, on=['pitch_type', 'zone'])
+batter_train = batter_train.join(batter_xwoba_adjusted, on=['pitch_type', 'zone'])
+
+pitcher_train = pitcher_train.join(pitcher_swing_adjusted, on=['pitch_type', 'zone'])
+pitcher_train = pitcher_train.join(pitcher_whiff_adjusted, on=['pitch_type', 'zone'])
+pitcher_train = pitcher_train.join(pitcher_xwoba_adjusted, on=['pitch_type', 'zone'])
+
+batter_test = batter_test.join(batter_swing_adjusted, on=['pitch_type', 'zone'])
+batter_test = batter_test.join(batter_whiff_adjusted, on=['pitch_type', 'zone'])
+batter_test = batter_test.join(batter_xwoba_adjusted, on=['pitch_type', 'zone'])
+
+pitcher_test = pitcher_test.join(pitcher_swing_adjusted, on=['pitch_type', 'zone'])
+pitcher_test = pitcher_test.join(pitcher_whiff_adjusted, on=['pitch_type', 'zone'])
+pitcher_test = pitcher_test.join(pitcher_xwoba_adjusted, on=['pitch_type', 'zone'])
+
+pitcher_logistic_model, pitcher_scaler, pitcher_probs, pitcher_log_loss = fit_logistic(pitcher_train, pitcher_test)
+pitcher_lookup, pitcher_benchmark_probs, pitcher_benchmark_loss = measure_benchmark(pitcher_train, pitcher_test)
+print(pitcher_log_loss)
+print(pitcher_benchmark_loss)
+
+batter_logistic_model, batter_scaler, batter_probs, batter_log_loss = fit_logistic(batter_train, batter_test)
+batter_lookup, batter_benchmark_probs, batter_benchmark_loss = measure_benchmark(batter_train, batter_test)
+print(batter_log_loss)
+print(batter_benchmark_loss)

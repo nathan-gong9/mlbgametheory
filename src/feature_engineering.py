@@ -1,5 +1,8 @@
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import log_loss
 
 
 OUTCOME_MAP = {
@@ -13,6 +16,9 @@ OUTCOME_MAP = {
         'foul': 'foul',
         'hit_into_play': 'in_play',
     }
+
+FEATURES = ['balls', 'strikes', 'release_speed', 'pfx_x', 'pfx_z',
+            'swing_rate_adjusted', 'whiff_rate_adjusted', 'xwoba_adjusted']
 
 def format_pitch_results(df):
     """
@@ -96,21 +102,44 @@ def find_shrink_rate_continuous(data, category):
 
 #applies the shrink rates and appends them to the stats of a player
 def shrink_features(df):
+    """
+    Computes a player's pitch-type x zone rates, shrunk toward a two-stage prior.
+
+    Stage 1: the player's overall rate for that pitch type is shrunk toward the
+    league rate for that pitch type x zone. This becomes the prior.
+    Stage 2: the player's rate in the specific cell is shrunk toward that prior.
+
+    A cell the player never threw (n=0) falls back to the stage-1 prior rather
+    than to the raw league baseline, so a pitcher's own tendency with that pitch
+    still informs the estimate.
+    """
     df_swings = df[df['swing'] == True]
     df_contact = df[df['in_play'] == True]
     df_contact = df_contact.dropna(subset=['estimated_woba_using_speedangle'])
-
-    #Calculates the df and pitcher swing, whiff, and xwoba values based on pitch type X zone
-    df_swing_percentage = df.groupby(['pitch_type', 'zone'])['swing'].agg(['mean', 'count'])
-    df_whiff_percentage = df_swings.groupby(['pitch_type', 'zone'])['whiff'].agg(['mean', 'count'])
-    df_whiff_percentage = df_whiff_percentage.reindex(df_swing_percentage.index, fill_value=0)
-    df_contact_quality = df_contact.groupby(['pitch_type', 'zone'])['estimated_woba_using_speedangle'].agg(['mean', 'count'])
-    df_contact_quality = df_contact_quality.reindex(df_swing_percentage.index, fill_value=0)
 
     #Fetches baseline values for swing, whiff, and xwoba rates in specific zone X pitch type buckets
     league_swing_baseline = pd.read_csv('../data/processed/league_swing_baseline.csv', index_col=['pitch_type', 'zone'])
     league_whiff_baseline = pd.read_csv('../data/processed/league_whiff_baseline.csv', index_col=['pitch_type', 'zone'])
     league_xwoba_baseline = pd.read_csv('../data/processed/league_xwoba_baseline.csv', index_col=['pitch_type', 'zone'])
+
+    #Full pitch_type x zone grid, restricted to the pitch types this player throws.
+    #Reindexing onto this creates rows for cells the player never threw.
+    player_types = df['pitch_type'].unique()
+    full_index = league_swing_baseline.index[
+        league_swing_baseline.index.get_level_values('pitch_type').isin(player_types)
+    ]
+
+    #Cell-level rates, expanded to the full grid
+    df_swing_percentage = df.groupby(['pitch_type', 'zone'])['swing'].agg(['mean', 'count']).reindex(full_index)
+    df_whiff_percentage = df_swings.groupby(['pitch_type', 'zone'])['whiff'].agg(['mean', 'count']).reindex(full_index)
+    df_contact_quality = df_contact.groupby(['pitch_type', 'zone'])['estimated_woba_using_speedangle'].agg(['mean', 'count']).reindex(full_index)
+
+    #Pitch-type-level rates, ignoring zone. Same source frames as above so the
+    #denominators match (whiff over swings, xwoba over balls in play).
+    swing_by_type = df.groupby('pitch_type')['swing'].agg(['mean', 'count'])
+    whiff_by_type = df_swings.groupby('pitch_type')['whiff'].agg(['mean', 'count'])
+    xwoba_by_type = df_contact.groupby('pitch_type')['estimated_woba_using_speedangle'].agg(['mean', 'count'])
+
     df_swing_percentage['baseline'] = league_swing_baseline
     df_whiff_percentage['baseline'] = league_whiff_baseline
     df_contact_quality['baseline'] = league_xwoba_baseline
@@ -122,19 +151,38 @@ def shrink_features(df):
     whiff_shrink_rate = shrink_rates.loc["whiff"].iloc[0]
     xwoba_shrink_rate = shrink_rates.loc["xwoba"].iloc[0]
 
-    df_swing_percentage['adjusted'] = apply_shrinkage(df_swing_percentage['mean'],
-        df_swing_percentage['baseline'],
-        df_swing_percentage['count'],
+    #Broadcast the pitch-type rates across every zone of that pitch type
+    type_level = df_swing_percentage.index.get_level_values('pitch_type')
+
+    swing_type_mean = pd.Series(type_level.map(swing_by_type['mean']), index=df_swing_percentage.index)
+    swing_type_count = pd.Series(type_level.map(swing_by_type['count']), index=df_swing_percentage.index).fillna(0)
+    whiff_type_mean = pd.Series(type_level.map(whiff_by_type['mean']), index=df_whiff_percentage.index)
+    whiff_type_count = pd.Series(type_level.map(whiff_by_type['count']), index=df_whiff_percentage.index).fillna(0)
+    xwoba_type_mean = pd.Series(type_level.map(xwoba_by_type['mean']), index=df_contact_quality.index)
+    xwoba_type_count = pd.Series(type_level.map(xwoba_by_type['count']), index=df_contact_quality.index).fillna(0)
+
+    #Stage 1: player's pitch-type rate shrunk toward the league cell rate
+    swing_prior = apply_shrinkage(swing_type_mean.fillna(0), df_swing_percentage['baseline'],
+                                  swing_type_count, swing_shrink_rate)
+    whiff_prior = apply_shrinkage(whiff_type_mean.fillna(0), df_whiff_percentage['baseline'],
+                                  whiff_type_count, whiff_shrink_rate)
+    xwoba_prior = apply_shrinkage(xwoba_type_mean.fillna(0), df_contact_quality['baseline'],
+                                  xwoba_type_count, xwoba_shrink_rate)
+
+    #Stage 2: player's cell rate shrunk toward that prior
+    df_swing_percentage['adjusted'] = apply_shrinkage(df_swing_percentage['mean'].fillna(0),
+        swing_prior,
+        df_swing_percentage['count'].fillna(0),
         swing_shrink_rate)
 
-    df_whiff_percentage['adjusted'] = apply_shrinkage(df_whiff_percentage['mean'],
-        df_whiff_percentage['baseline'],
-        df_whiff_percentage['count'],
+    df_whiff_percentage['adjusted'] = apply_shrinkage(df_whiff_percentage['mean'].fillna(0),
+        whiff_prior,
+        df_whiff_percentage['count'].fillna(0),
         whiff_shrink_rate)
 
-    df_contact_quality['adjusted'] = apply_shrinkage(df_contact_quality['mean'],
-        df_contact_quality['baseline'],
-        df_contact_quality['count'],
+    df_contact_quality['adjusted'] = apply_shrinkage(df_contact_quality['mean'].fillna(0),
+        xwoba_prior,
+        df_contact_quality['count'].fillna(0),
         xwoba_shrink_rate)
 
     swing_adjusted = df_swing_percentage['adjusted'].rename('swing_rate_adjusted')
@@ -211,3 +259,63 @@ def build_outcome_label(df):
         print(f"Dropping {unmapped.sum()} unmapped pitches:\n{unmapped}")
     df = df.dropna(subset=['outcome'])
     return df
+
+def split_data(df, train_frac = 0.8):
+    '''
+    splits the data into a training split and testing split
+    split is based on chronological order of plate appearances
+    '''
+    df = df.copy()
+    df = df.sort_values(by=["game_date", "game_pk", "at_bat_number", "pitch_number"])
+
+    df['pa_id'] = df['game_pk'].astype(str) + '_' + df['at_bat_number'].astype(str)
+    unique_plate_appearances = df['pa_id'].unique()
+    data_cutoff = int(len(unique_plate_appearances) * train_frac)
+
+    training_pas = unique_plate_appearances[:data_cutoff]
+    testing_pas = unique_plate_appearances[data_cutoff:]
+
+    train_data = df[df["pa_id"].isin(training_pas)]
+    test_data = df[df["pa_id"].isin(testing_pas)]
+
+    return train_data, test_data
+
+def get_xy(df):
+    '''
+    returns the x and y features of a dataset
+    '''
+    x = df[FEATURES]
+    y = df['outcome']
+    return x, y
+
+def fit_logistic(train_df, test_df):
+    '''
+    fits and tests a logistic model on the training and test dataframes
+    '''
+    x_train, y_train = get_xy(train_df)
+    x_test, y_test = get_xy(test_df)
+
+    scaler = StandardScaler()
+    x_train_scaled = scaler.fit_transform(x_train)
+    x_test_scaled = scaler.transform(x_test)
+
+    model = LogisticRegression(max_iter=1000)
+    model.fit(x_train_scaled, y_train)
+
+    probs = model.predict_proba(x_test_scaled)
+    loss = log_loss(y_test, probs)
+    return model, scaler, probs, loss
+
+def measure_benchmark(train_df, test_df):
+    '''
+    measures the benchmark performance of only using 
+    the balls-strikes counts as the predictor
+    '''
+    x_test, y_test = get_xy(test_df)
+
+    lookup = train_df.groupby(['balls', 'strikes'])['outcome'].value_counts(normalize=True).unstack().fillna(0.001)
+    lookup = lookup.div(lookup.sum(axis=1), axis=0)
+    benchmark = test_df[['balls', 'strikes']].join(lookup, on=['balls', 'strikes'])
+    benchmark_probs = benchmark.drop(columns=['balls', 'strikes'])
+    loss = log_loss(y_test, benchmark_probs)
+    return lookup, benchmark_probs, loss

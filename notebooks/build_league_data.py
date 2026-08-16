@@ -6,8 +6,9 @@ the necessary data, and puts them into necessary variables
 import pybaseball
 import pandas as pd
 import sys
+from pathlib import Path
 
-sys.path.append('../src')
+sys.path.append(str(Path(__file__).resolve().parent.parent / 'src'))
 from feature_engineering import format_pitch_results, find_shrink_rate, find_shrink_rate_continuous, generate_run_value_table
 
 filenames = ['../data/raw/2020season.csv', '../data/raw/2021season.csv', 
@@ -20,7 +21,6 @@ league_data = format_pitch_results(league_data)
 
 count_run_values = generate_run_value_table(league_data)
 count_run_values.to_csv('../data/processed/count_run_values.csv', index=False)
-print(count_run_values)
 
 league_data_swings = league_data[league_data['swing'] == True]
 league_data_contact = league_data[league_data['in_play'] == True]
