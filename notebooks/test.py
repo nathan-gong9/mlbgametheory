@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.append('../src')
 from feature_engineering import (format_pitch_results, find_shrink_rate, apply_shrinkage, 
                                 shrink_features, measure_location_error, build_outcome_label, 
-                                split_data, get_xy, fit_logistic, measure_benchmark)
+                                split_data, get_xy, fit_logistic, measure_benchmark, calibrate)
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss
@@ -91,3 +91,7 @@ batter_logistic_model, batter_scaler, batter_probs, batter_log_loss = fit_logist
 batter_lookup, batter_benchmark_probs, batter_benchmark_loss = measure_benchmark(batter_train, batter_test)
 print(batter_log_loss)
 print(batter_benchmark_loss)
+
+pitcher_x_test, pitcher_y_test = get_xy(pitcher_test)
+
+print(calibrate(pitcher_y_test, pitcher_probs, pitcher_logistic_model.classes_, 'swinging_strike'))

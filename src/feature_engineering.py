@@ -319,3 +319,21 @@ def measure_benchmark(train_df, test_df):
     benchmark_probs = benchmark.drop(columns=['balls', 'strikes'])
     loss = log_loss(y_test, benchmark_probs)
     return lookup, benchmark_probs, loss
+
+def calibrate(y_test, probs, classes, class_name, n_bins=10):
+    '''
+    check calibration of model to measure the relative correct prediction rate
+    '''
+    column = list(classes).index(class_name)
+    target = probs[:, column]
+    results = y_test == class_name
+    results = results.reset_index(drop=True)
+    df = pd.DataFrame({'predicted': target, 'actual': results})
+    df['bin'] = pd.qcut(df['predicted'], n_bins, labels=False, duplicates='drop')
+    calibration = df.groupby('bin').agg(
+        predicted=('predicted', 'mean'),
+        actual=('actual', 'mean'),
+        n=('actual', 'size'),
+    )
+    return calibration
+
